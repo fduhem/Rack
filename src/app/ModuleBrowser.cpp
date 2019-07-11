@@ -25,7 +25,6 @@
 #include <settings.hpp>
 #include <set>
 #include <algorithm>
-#include <helpers.hpp>
 
 namespace rack {
 namespace app {
@@ -425,75 +424,12 @@ struct BrowserSidebar : widget::Widget {
 	}
 };
 
-struct ModuleBrowserZoomQuantity : Quantity {
-	void setValue(float value) override {
-		settings::moduleBrowserZoom = math::clamp(value, getMinValue(), getMaxValue());
-	}
-	float getValue() override {
-		return settings::moduleBrowserZoom;
-	}
-	float getMinValue() override { return 0.5; }
-	float getMaxValue() override { return 2.0; }
-	float getDefaultValue() override { return 0.5; }
-	float getDisplayValue() override { return getValue() * 100; }
-	void setDisplayValue(float displayValue) override { setValue(displayValue); }
-	std::string getLabel() override { return "Zoom"; }
-	std::string getUnit() override { return "%"; }
-};
-
-struct ZoomItem : public ui::MenuItem {
-	float value;
-	Quantity *quantity;
-
-	ZoomItem(std::string text, float value, Quantity *quantity) 
-		: value(value)
-		, quantity(quantity) {
-		this->text = text;
-		this->setSize(math::Vec(60, 30));
-	}
-	
-	void onAction(const event::Action &e) override {
-		quantity->setValue(value);
-	}
-};
-
-struct ModuleBrowserZoomButton : ui::ChoiceButton {
-	ModuleBrowserZoomButton() {
-		quantity  = new ModuleBrowserZoomQuantity;
-	}
-
-	~ModuleBrowserZoomButton() {
-		delete quantity;
-	}
-
-	void onDragStart(const event::DragStart &e) override {}
-	void onDragEnd(const event::DragEnd &e) override {}
-
-	void onAction(const event::Action &e) override {
-		auto menu = createMenu();
-
-		menu->setSize(math::Vec(200, 200));
-		menu->addChild(new ZoomItem("50%", 0.5f, quantity));
-		menu->addChild(new ZoomItem("75%", 0.75f, quantity));
-		menu->addChild(new ZoomItem("100%", 1.0f, quantity));
-		menu->addChild(new ZoomItem("125%", 1.25f, quantity));
-		menu->addChild(new ZoomItem("150%", 1.5f, quantity));
-		menu->addChild(new ZoomItem("175%", 1.75f, quantity));
-		menu->addChild(new ZoomItem("200%", 2.0f, quantity));
-	}
-
-	void step() override {
-		text = quantity->getString();
-	}
-};
-
 struct ModuleBrowser : widget::OpaqueWidget {
 	BrowserSidebar *sidebar;
 	ui::ScrollWidget *modelScroll;
 	ui::Label *modelLabel;
 	ui::MarginLayout *modelMargin;
 	ui::SequentialLayout *modelContainer;
-	ModuleBrowserZoomButton *moduleBrowserZoomButton;
 
 	std::string search;
 	std::string brand;
@@ -529,10 +465,6 @@ struct ModuleBrowser : widget::OpaqueWidget {
 			}
 		}
 
-		moduleBrowserZoomButton = new ModuleBrowserZoomButton();
-		moduleBrowserZoomButton->box.size.x = 200;
-		addChild(moduleBrowserZoomButton);
-
 		refresh();
 	}
 
@@ -541,7 +473,6 @@ struct ModuleBrowser : widget::OpaqueWidget {
 
 		sidebar->box.size.y = box.size.y;
 		modelLabel->box.pos = sidebar->box.getTopRight().plus(math::Vec(5, 5));
-		moduleBrowserZoomButton->box.pos = sidebar->box.getTopRight().plus(math::Vec(500, 5));
 		modelScroll->box.pos = sidebar->box.getTopRight().plus(math::Vec(0, 30));
 		modelScroll->box.size = box.size.minus(modelScroll->box.pos);
 		modelMargin->box.size.x = modelScroll->box.size.x;

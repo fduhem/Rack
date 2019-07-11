@@ -235,6 +235,38 @@ struct ZoomSlider : ui::Slider {
 	}
 };
 
+struct ModuleBrowserZoomQuantity : Quantity
+{
+	void setValue(float value) override
+	{
+		settings::moduleBrowserZoom = math::clamp(value, getMinValue(), getMaxValue());
+	}
+	float getValue() override
+	{
+		return settings::moduleBrowserZoom;
+	}
+	float getMinValue() override { return 0.5; }
+	float getMaxValue() override { return 2.0; }
+	float getDefaultValue() override { return 0.5; }
+	float getDisplayValue() override { return std::round(getValue() * 100); }
+	void setDisplayValue(float displayValue) override { setValue(displayValue); }
+	std::string getLabel() override { return "Module Browser Zoom"; }
+	std::string getUnit() override { return "%"; }
+};
+
+struct ModuleBrowserZoomSlider : ui::Slider
+{
+	ModuleBrowserZoomSlider()
+	{
+		quantity = new ModuleBrowserZoomQuantity;
+	}
+
+	~ModuleBrowserZoomSlider()
+	{
+		delete quantity;
+	}
+};
+
 struct CableOpacityQuantity : Quantity {
 	void setValue(float value) override {
 		settings::cableOpacity = math::clamp(value, getMinValue(), getMaxValue());
@@ -327,6 +359,10 @@ struct ViewButton : MenuButton {
 		ZoomSlider *zoomSlider = new ZoomSlider;
 		zoomSlider->box.size.x = 200.0;
 		menu->addChild(zoomSlider);
+
+		ModuleBrowserZoomSlider *moduleBrowserZoomSlider = new ModuleBrowserZoomSlider;
+		moduleBrowserZoomSlider->box.size.x = 200.0;
+		menu->addChild(moduleBrowserZoomSlider);
 
 		CableOpacitySlider *cableOpacitySlider = new CableOpacitySlider;
 		cableOpacitySlider->box.size.x = 200.0;
