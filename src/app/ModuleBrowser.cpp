@@ -182,7 +182,7 @@ struct ModelBox : widget::OpaqueWidget {
 		previewWidget->box.size.y = std::ceil(RACK_GRID_HEIGHT * settings::moduleBrowserZoom);
 
 		widget::ZoomWidget* zoomWidget = new widget::ZoomWidget;
-		zoomWidget->setZoom(settings::moduleBrowserZoo);
+		zoomWidget->setZoom(settings::moduleBrowserZoom);
 		previewFb->addChild(zoomWidget);
 
 		ModuleWidget* moduleWidget = model->createModuleWidgetNull();
