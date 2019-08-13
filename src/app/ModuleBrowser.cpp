@@ -23,6 +23,7 @@
 #include <string.hpp>
 #include <history.hpp>
 #include <settings.hpp>
+#include <tag.hpp>
 #include <set>
 #include <algorithm>
 #include <helpers.hpp>
@@ -34,7 +35,8 @@ namespace app {
 // Static functions
 
 
-static float modelScore(plugin::Model *model, const std::string &search) {
+
+static float modelScore(plugin::Model* model, const std::string& search) {
 	if (search.empty())
 		return 1.f;
 	std::string s;
@@ -45,15 +47,18 @@ static float modelScore(plugin::Model *model, const std::string &search) {
 	s += model->name;
 	s += " ";
 	s += model->slug;
-	for (const std::string &tag : model->tags) {
-		s += " ";
-		s += tag;
+	for (int tagId : model->tags) {
+		// Add all aliases of a tag
+		for (const std::string& alias : tag::tagAliases[tagId]) {
+			s += " ";
+			s += alias;
+		}
 	}
 	float score = string::fuzzyScore(string::lowercase(s), string::lowercase(search));
 	return score;
 }
 
-static bool isModelVisible(plugin::Model *model, const std::string &search, const std::string &brand, const std::string &tag) {
+static bool isModelVisible(plugin::Model* model, const std::string& search, const std::string& brand, int tagId) {
 	// Filter search query
 	if (search != "") {
 		float score = modelScore(model, search);
@@ -68,29 +73,23 @@ static bool isModelVisible(plugin::Model *model, const std::string &search, cons
 	}
 
 	// Filter tag
-	if (tag != "") {
-		bool found = false;
-		for (const std::string &modelTag : model->tags) {
-			if (modelTag == tag) {
-				found = true;
-				break;
-			}
-		}
-		if (!found)
+	if (tagId >= 0) {
+		auto it = std::find(model->tags.begin(), model->tags.end(), tagId);
+		if (it == model->tags.end())
 			return false;
 	}
 
 	return true;
 }
 
-static ModuleWidget *chooseModel(plugin::Model *model) {
+static ModuleWidget* chooseModel(plugin::Model* model) {
 	// Create module
-	ModuleWidget *moduleWidget = model->createModuleWidget();
+	ModuleWidget* moduleWidget = model->createModuleWidget();
 	assert(moduleWidget);
 	APP->scene->rack->addModuleAtMouse(moduleWidget);
 
 	// Push ModuleAdd history action
-	history::ModuleAdd *h = new history::ModuleAdd;
+	history::ModuleAdd* h = new history::ModuleAdd;
 	h->name = "create module";
 	h->setModule(moduleWidget);
 	APP->history->push(h);
@@ -102,7 +101,7 @@ static ModuleWidget *chooseModel(plugin::Model *model) {
 }
 
 template <typename K, typename V>
-V get_default(const std::map<K, V> &m, const K &key, const V &def) {
+V get_default(const std::map<K, V>& m, const K& key, const V& def) {
 	auto it = m.find(key);
 	if (it == m.end())
 		return def;
@@ -121,7 +120,7 @@ struct BrowserOverlay : widget::OpaqueWidget {
 			OpaqueWidget::step();
 	}
 
-	void onButton(const event::Button &e) override {
+	void onButton(const event::Button& e) override {
 		OpaqueWidget::onButton(e);
 		if (e.getTarget() != this)
 			return;
@@ -137,8 +136,9 @@ struct ModelBox : widget::OpaqueWidget {
 	plugin::Model *model;
 	widget::Widget *previewWidget = NULL;
 	ui::Tooltip *tooltip = NULL;
+
 	/** Lazily created */
-	widget::FramebufferWidget *previewFb = NULL;
+	widget::FramebufferWidget* previewFb = NULL;
 	/** Number of frames since draw() has been called */
 	int visibleFrames = 0;
 	float previousZoomValue = 0;
@@ -163,7 +163,7 @@ struct ModelBox : widget::OpaqueWidget {
 		}
 	}
 
-	void setModel(plugin::Model *model) {
+	void setModel(plugin::Model* model) {
 		this->model = model;
 
 		previewWidget = new widget::TransparentWidget;
@@ -181,11 +181,11 @@ struct ModelBox : widget::OpaqueWidget {
 		previewWidget->addChild(previewFb);
 		previewWidget->box.size.y = std::ceil(RACK_GRID_HEIGHT * settings::moduleBrowserZoom);
 
-		widget::ZoomWidget *zoomWidget = new widget::ZoomWidget;
-		zoomWidget->setZoom(settings::moduleBrowserZoom);
+		widget::ZoomWidget* zoomWidget = new widget::ZoomWidget;
+		zoomWidget->setZoom(settings::moduleBrowserZoo);
 		previewFb->addChild(zoomWidget);
 
-		ModuleWidget *moduleWidget = model->createModuleWidgetNull();
+		ModuleWidget* moduleWidget = model->createModuleWidgetNull();
 		zoomWidget->addChild(moduleWidget);
 
 		zoomWidget->box.size.x = moduleWidget->box.size.x * settings::moduleBrowserZoom;
@@ -213,7 +213,7 @@ struct ModelBox : widget::OpaqueWidget {
 		OpaqueWidget::step();
 	}
 
-	void draw(const DrawArgs &args) override {
+	void draw(const DrawArgs& args) override {
 		visibleFrames = 0;
 
 		// Lazily create preview when drawn
@@ -225,7 +225,7 @@ struct ModelBox : widget::OpaqueWidget {
 		nvgBeginPath(args.vg);
 		float r = 10; // Blur radius
 		float c = 10; // Corner radius
-		nvgRect(args.vg, -r, -r, box.size.x + 2*r, box.size.y + 2*r);
+		nvgRect(args.vg, -r, -r, box.size.x + 2 * r, box.size.y + 2 * r);
 		NVGcolor shadowColor = nvgRGBAf(0, 0, 0, 0.5);
 		NVGcolor transparentColor = nvgRGBAf(0, 0, 0, 0);
 		nvgFillPaint(args.vg, nvgBoxGradient(args.vg, 0, 0, box.size.x, box.size.y, c, r, shadowColor, transparentColor));
@@ -234,7 +234,7 @@ struct ModelBox : widget::OpaqueWidget {
 		OpaqueWidget::draw(args);
 	}
 
-	void setTooltip(ui::Tooltip *tooltip) {
+	void setTooltip(ui::Tooltip* tooltip) {
 		if (this->tooltip) {
 			this->tooltip->parent->removeChild(this->tooltip);
 			delete this->tooltip;
@@ -247,20 +247,20 @@ struct ModelBox : widget::OpaqueWidget {
 		}
 	}
 
-	void onButton(const event::Button &e) override {
+	void onButton(const event::Button& e) override {
 		OpaqueWidget::onButton(e);
 		if (e.getTarget() != this)
 			return;
 
 		if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
-			ModuleWidget *mw = chooseModel(model);
+			ModuleWidget* mw = chooseModel(model);
 
 			// Pretend the moduleWidget was clicked so it can be dragged in the RackWidget
 			e.consume(mw);
 		}
 	}
 
-	void onEnter(const event::Enter &e) override {
+	void onEnter(const event::Enter& e) override {
 		std::string text;
 		text = model->plugin->brand;
 		text += " " + model->name;
@@ -269,22 +269,23 @@ struct ModelBox : widget::OpaqueWidget {
 		for (size_t i = 0; i < model->tags.size(); i++) {
 			if (i > 0)
 				text += ", ";
-			text += model->tags[i];
+			int tagId = model->tags[i];
+			text += tag::tagAliases[tagId][0];
 		}
 		// Description
 		if (model->description != "") {
 			text += "\n" + model->description;
 		}
-		ui::Tooltip *tooltip = new ui::Tooltip;
+		ui::Tooltip* tooltip = new ui::Tooltip;
 		tooltip->text = text;
 		setTooltip(tooltip);
 	}
 
-	void onLeave(const event::Leave &e) override {
+	void onLeave(const event::Leave& e) override {
 		setTooltip(NULL);
 	}
 
-	void onHide(const event::Hide &e) override {
+	void onHide(const event::Hide& e) override {
 		// Hide tooltip
 		setTooltip(NULL);
 		OpaqueWidget::onHide(e);
@@ -293,13 +294,14 @@ struct ModelBox : widget::OpaqueWidget {
 
 
 struct BrandItem : ui::MenuItem {
-	void onAction(const event::Action &e) override;
+	void onAction(const event::Action& e) override;
 	void step() override;
 };
 
 
 struct TagItem : ui::MenuItem {
-	void onAction(const event::Action &e) override;
+	int tagId;
+	void onAction(const event::Action& e) override;
 	void step() override;
 };
 
@@ -311,16 +313,16 @@ struct BrowserSearchField : ui::TextField {
 		TextField::step();
 	}
 
-	void onSelectKey(const event::SelectKey &e) override;
-	void onChange(const event::Change &e) override;
-	void onAction(const event::Action &e) override;
+	void onSelectKey(const event::SelectKey& e) override;
+	void onChange(const event::Change& e) override;
+	void onAction(const event::Action& e) override;
 
-	void onHide(const event::Hide &e) override {
+	void onHide(const event::Hide& e) override {
 		APP->event->setSelected(NULL);
 		ui::TextField::onHide(e);
 	}
 
-	void onShow(const event::Show &e) override {
+	void onShow(const event::Show& e) override {
 		selectAll();
 		TextField::onShow(e);
 	}
@@ -328,19 +330,19 @@ struct BrowserSearchField : ui::TextField {
 
 
 struct ClearButton : ui::Button {
-	void onAction(const event::Action &e) override;
+	void onAction(const event::Action& e) override;
 };
 
 
 struct BrowserSidebar : widget::Widget {
-	BrowserSearchField *searchField;
-	ClearButton *clearButton;
-	ui::Label *brandLabel;
-	ui::List *brandList;
-	ui::ScrollWidget *brandScroll;
-	ui::Label *tagLabel;
-	ui::List *tagList;
-	ui::ScrollWidget *tagScroll;
+	BrowserSearchField* searchField;
+	ClearButton* clearButton;
+	ui::Label* brandLabel;
+	ui::List* brandList;
+	ui::ScrollWidget* brandScroll;
+	ui::Label* tagLabel;
+	ui::List* tagList;
+	ui::ScrollWidget* tagScroll;
 
 	BrowserSidebar() {
 		// Search
@@ -368,12 +370,12 @@ struct BrowserSidebar : widget::Widget {
 
 		// Collect brands from all plugins
 		std::set<std::string, string::CaseInsensitiveCompare> brands;
-		for (plugin::Plugin *plugin : plugin::plugins) {
+		for (plugin::Plugin* plugin : plugin::plugins) {
 			brands.insert(plugin->brand);
 		}
 
-		for (const std::string &brand : brands) {
-			BrandItem *item = new BrandItem;
+		for (const std::string& brand : brands) {
+			BrandItem* item = new BrandItem;
 			item->text = brand;
 			brandList->addChild(item);
 		}
@@ -392,9 +394,10 @@ struct BrowserSidebar : widget::Widget {
 		tagList = new ui::List;
 		tagScroll->container->addChild(tagList);
 
-		for (const std::string &tag : plugin::allowedTags) {
-			TagItem *item = new TagItem;
-			item->text = tag;
+		for (int tagId = 0; tagId < (int) tag::tagAliases.size(); tagId++) {
+			TagItem* item = new TagItem;
+			item->text = tag::tagAliases[tagId][0];
+			item->tagId = tagId;
 			tagList->addChild(item);
 		}
 	}
@@ -497,7 +500,7 @@ struct ModuleBrowser : widget::OpaqueWidget {
 
 	std::string search;
 	std::string brand;
-	std::string tag;
+	int tagId = -1;
 
 	ModuleBrowser() {
 
@@ -521,9 +524,9 @@ struct ModuleBrowser : widget::OpaqueWidget {
 		modelMargin->addChild(modelContainer);
 
 		// Add ModelBoxes for each Model
-		for (plugin::Plugin *plugin : plugin::plugins) {
-			for (plugin::Model *model : plugin->models) {
-				ModelBox *moduleBox = new ModelBox;
+		for (plugin::Plugin* plugin : plugin::plugins) {
+			for (plugin::Model* model : plugin->models) {
+				ModelBox* moduleBox = new ModelBox;
 				moduleBox->setModel(model);
 				modelContainer->addChild(moduleBox);
 			}
@@ -533,7 +536,7 @@ struct ModuleBrowser : widget::OpaqueWidget {
 		moduleBrowserZoomButton->box.size.x = 200;
 		addChild(moduleBrowserZoomButton);
 
-		refresh();
+		clear();
 	}
 
 	void step() override {
@@ -550,7 +553,7 @@ struct ModuleBrowser : widget::OpaqueWidget {
 		OpaqueWidget::step();
 	}
 
-	void draw(const DrawArgs &args) override {
+	void draw(const DrawArgs& args) override {
 		bndMenuBackground(args.vg, 0.0, 0.0, box.size.x, box.size.y, 0);
 		Widget::draw(args);
 	}
@@ -560,16 +563,16 @@ struct ModuleBrowser : widget::OpaqueWidget {
 		modelScroll->offset = math::Vec();
 
 		// Filter ModelBoxes
-		for (Widget *w : modelContainer->children) {
-			ModelBox *m = dynamic_cast<ModelBox*>(w);
+		for (Widget* w : modelContainer->children) {
+			ModelBox* m = dynamic_cast<ModelBox*>(w);
 			assert(m);
-			m->visible = isModelVisible(m->model, search, brand, tag);
+			m->visible = isModelVisible(m->model, search, brand, tagId);
 		}
 
 		// Sort ModelBoxes
-		modelContainer->children.sort([&](Widget *w1, Widget *w2) {
-			ModelBox *m1 = dynamic_cast<ModelBox*>(w1);
-			ModelBox *m2 = dynamic_cast<ModelBox*>(w2);
+		modelContainer->children.sort([&](Widget * w1, Widget * w2) {
+			ModelBox* m1 = dynamic_cast<ModelBox*>(w1);
+			ModelBox* m2 = dynamic_cast<ModelBox*>(w2);
 			// Sort by (modifiedTimestamp descending, plugin brand)
 			auto t1 = std::make_tuple(-m1->model->plugin->modifiedTimestamp, m1->model->plugin->brand);
 			auto t2 = std::make_tuple(-m2->model->plugin->modifiedTimestamp, m2->model->plugin->brand);
@@ -582,8 +585,8 @@ struct ModuleBrowser : widget::OpaqueWidget {
 		else {
 			std::map<Widget*, float> scores;
 			// Compute scores
-			for (Widget *w : modelContainer->children) {
-				ModelBox *m = dynamic_cast<ModelBox*>(w);
+			for (Widget* w : modelContainer->children) {
+				ModelBox* m = dynamic_cast<ModelBox*>(w);
 				assert(m);
 				if (!m->visible)
 					continue;
@@ -600,16 +603,16 @@ struct ModuleBrowser : widget::OpaqueWidget {
 
 		// Get modules that would be filtered by just the search query
 		std::vector<plugin::Model*> filteredModels;
-		for (Widget *w : modelContainer->children) {
-			ModelBox *m = dynamic_cast<ModelBox*>(w);
+		for (Widget* w : modelContainer->children) {
+			ModelBox* m = dynamic_cast<ModelBox*>(w);
 			assert(m);
-			if (isModelVisible(m->model, search, "", ""))
+			if (isModelVisible(m->model, search, "", -1))
 				filteredModels.push_back(m->model);
 		}
 
-		auto hasModel = [&](const std::string &brand, const std::string &tag) -> bool {
-			for (plugin::Model *model : filteredModels) {
-				if (isModelVisible(model, "", brand, tag))
+		auto hasModel = [&](const std::string & brand, int tagId) -> bool {
+			for (plugin::Model* model : filteredModels) {
+				if (isModelVisible(model, "", brand, tagId))
 					return true;
 			}
 			return false;
@@ -617,20 +620,20 @@ struct ModuleBrowser : widget::OpaqueWidget {
 
 		// Enable brand and tag items that are available in visible ModelBoxes
 		int brandsLen = 0;
-		for (Widget *w : sidebar->brandList->children) {
-			BrandItem *item = dynamic_cast<BrandItem*>(w);
+		for (Widget* w : sidebar->brandList->children) {
+			BrandItem* item = dynamic_cast<BrandItem*>(w);
 			assert(item);
-			item->disabled = !hasModel(item->text, tag);
+			item->disabled = !hasModel(item->text, tagId);
 			if (!item->disabled)
 				brandsLen++;
 		}
 		sidebar->brandLabel->text = string::f("Brands (%d)", brandsLen);
 
 		int tagsLen = 0;
-		for (Widget *w : sidebar->tagList->children) {
-			TagItem *item = dynamic_cast<TagItem*>(w);
+		for (Widget* w : sidebar->tagList->children) {
+			TagItem* item = dynamic_cast<TagItem*>(w);
 			assert(item);
-			item->disabled = !hasModel(brand, item->text);
+			item->disabled = !hasModel(brand, item->tagId);
 			if (!item->disabled)
 				tagsLen++;
 		}
@@ -638,7 +641,7 @@ struct ModuleBrowser : widget::OpaqueWidget {
 
 		// Count models
 		int modelsLen = 0;
-		for (Widget *w : modelContainer->children) {
+		for (Widget* w : modelContainer->children) {
 			if (w->visible)
 				modelsLen++;
 		}
@@ -649,11 +652,11 @@ struct ModuleBrowser : widget::OpaqueWidget {
 		search = "";
 		sidebar->searchField->setText("");
 		brand = "";
-		tag = "";
+		tagId = -1;
 		refresh();
 	}
 
-	void onShow(const event::Show &e) override {
+	void onShow(const event::Show& e) override {
 		refresh();
 		OpaqueWidget::onShow(e);
 	}
@@ -663,8 +666,8 @@ struct ModuleBrowser : widget::OpaqueWidget {
 // Implementations to resolve dependencies
 
 
-inline void BrandItem::onAction(const event::Action &e) {
-	ModuleBrowser *browser = getAncestorOfType<ModuleBrowser>();
+inline void BrandItem::onAction(const event::Action& e) {
+	ModuleBrowser* browser = getAncestorOfType<ModuleBrowser>();
 	if (browser->brand == text)
 		browser->brand = "";
 	else
@@ -674,36 +677,36 @@ inline void BrandItem::onAction(const event::Action &e) {
 
 inline void BrandItem::step() {
 	MenuItem::step();
-	ModuleBrowser *browser = getAncestorOfType<ModuleBrowser>();
+	ModuleBrowser* browser = getAncestorOfType<ModuleBrowser>();
 	active = (browser->brand == text);
 }
 
-inline void TagItem::onAction(const event::Action &e) {
-	ModuleBrowser *browser = getAncestorOfType<ModuleBrowser>();
-	if (browser->tag == text)
-		browser->tag = "";
+inline void TagItem::onAction(const event::Action& e) {
+	ModuleBrowser* browser = getAncestorOfType<ModuleBrowser>();
+	if (browser->tagId == tagId)
+		browser->tagId = -1;
 	else
-		browser->tag = text;
+		browser->tagId = tagId;
 	browser->refresh();
 }
 
 inline void TagItem::step() {
 	MenuItem::step();
-	ModuleBrowser *browser = getAncestorOfType<ModuleBrowser>();
-	active = (browser->tag == text);
+	ModuleBrowser* browser = getAncestorOfType<ModuleBrowser>();
+	active = (browser->tagId == tagId);
 }
 
-inline void BrowserSearchField::onSelectKey(const event::SelectKey &e) {
+inline void BrowserSearchField::onSelectKey(const event::SelectKey& e) {
 	if (e.action == GLFW_PRESS) {
 		switch (e.key) {
 			case GLFW_KEY_ESCAPE: {
-				BrowserOverlay *overlay = getAncestorOfType<BrowserOverlay>();
+				BrowserOverlay* overlay = getAncestorOfType<BrowserOverlay>();
 				overlay->hide();
 				e.consume(this);
 			} break;
 			case GLFW_KEY_BACKSPACE: {
 				if (text == "") {
-					ModuleBrowser *browser = getAncestorOfType<ModuleBrowser>();
+					ModuleBrowser* browser = getAncestorOfType<ModuleBrowser>();
 					browser->clear();
 					e.consume(this);
 				}
@@ -715,17 +718,17 @@ inline void BrowserSearchField::onSelectKey(const event::SelectKey &e) {
 		ui::TextField::onSelectKey(e);
 }
 
-inline void BrowserSearchField::onChange(const event::Change &e) {
-	ModuleBrowser *browser = getAncestorOfType<ModuleBrowser>();
+inline void BrowserSearchField::onChange(const event::Change& e) {
+	ModuleBrowser* browser = getAncestorOfType<ModuleBrowser>();
 	browser->search = string::trim(text);
 	browser->refresh();
 }
 
-inline void BrowserSearchField::onAction(const event::Action &e) {
+inline void BrowserSearchField::onAction(const event::Action& e) {
 	// Get first ModelBox
-	ModelBox *mb = NULL;
-	ModuleBrowser *browser = getAncestorOfType<ModuleBrowser>();
-	for (Widget *w : browser->modelContainer->children) {
+	ModelBox* mb = NULL;
+	ModuleBrowser* browser = getAncestorOfType<ModuleBrowser>();
+	for (Widget* w : browser->modelContainer->children) {
 		if (w->visible) {
 			mb = dynamic_cast<ModelBox*>(w);
 			break;
@@ -737,8 +740,8 @@ inline void BrowserSearchField::onAction(const event::Action &e) {
 	}
 }
 
-inline void ClearButton::onAction(const event::Action &e) {
-	ModuleBrowser *browser = getAncestorOfType<ModuleBrowser>();
+inline void ClearButton::onAction(const event::Action& e) {
+	ModuleBrowser* browser = getAncestorOfType<ModuleBrowser>();
 	browser->clear();
 }
 
@@ -746,10 +749,10 @@ inline void ClearButton::onAction(const event::Action &e) {
 // Global functions
 
 
-widget::Widget *moduleBrowserCreate() {
-	BrowserOverlay *overlay = new BrowserOverlay;
+widget::Widget* moduleBrowserCreate() {
+	BrowserOverlay* overlay = new BrowserOverlay;
 
-	ModuleBrowser *browser = new ModuleBrowser;
+	ModuleBrowser* browser = new ModuleBrowser;
 	overlay->addChild(browser);
 
 	return overlay;
