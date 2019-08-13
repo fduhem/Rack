@@ -127,11 +127,11 @@ void fromJson(json_t* rootJ) {
 	if (invertZoomJ)
 		invertZoom = json_boolean_value(invertZoomJ);
 
-	json_t *moduleBrowserZoomJ = json_object_get(rootJ, "moduleBrowserZoom");
+	json_t* moduleBrowserZoomJ = json_object_get(rootJ, "moduleBrowserZoom");
 	if (moduleBrowserZoomJ)
 		moduleBrowserZoom = json_number_value(moduleBrowserZoomJ);
 
-	json_t *cableOpacityJ = json_object_get(rootJ, "cableOpacity");
+	json_t* cableOpacityJ = json_object_get(rootJ, "cableOpacity");
 
 	if (cableOpacityJ)
 		cableOpacity = json_number_value(cableOpacityJ);
