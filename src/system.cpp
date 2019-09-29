@@ -27,6 +27,9 @@
 	#include <dbghelp.h>
 #endif
 
+#define ZIP_STATIC
+#include <zip.h>
+
 
 namespace rack {
 namespace system {
@@ -180,12 +183,18 @@ double getThreadTime() {
 		return 0.0;
 	return info.user_time.seconds + info.user_time.microseconds * 1e-6;
 #elif defined ARCH_WIN
-	FILETIME creationTime;
-	FILETIME exitTime;
-	FILETIME kernelTime;
-	FILETIME userTime;
-	GetThreadTimes(GetCurrentThread(), &creationTime, &exitTime, &kernelTime, &userTime);
-	return ((((uint64_t) userTime.dwHighDateTime) << 32) + userTime.dwLowDateTime) * 1e-7;
+	// FILETIME creationTime;
+	// FILETIME exitTime;
+	// FILETIME kernelTime;
+	// FILETIME userTime;
+	// GetThreadTimes(GetCurrentThread(), &creationTime, &exitTime, &kernelTime, &userTime);
+	// return ((uint64_t(userTime.dwHighDateTime) << 32) + userTime.dwLowDateTime) * 1e-7;
+
+	uint64_t cycles;
+	QueryThreadCycleTime(GetCurrentThread(), &cycles);
+	// HACK Assume that the RDTSC Time-Step Counter instruction is fixed at 2.5GHz. This should only be within a factor of 2 on all PCs.
+	const double freq = 2.5e9;
+	return (double) cycles / freq;
 #endif
 }
 
@@ -315,6 +324,74 @@ std::string getOperatingSystemInfo() {
 	// See https://docs.microsoft.com/en-us/windows/desktop/api/winnt/ns-winnt-_osversioninfoa for a list of Windows version numbers.
 	return string::f("Windows %u.%u", info.dwMajorVersion, info.dwMinorVersion);
 #endif
+}
+
+
+int unzipToFolder(const std::string& zipPath, const std::string& dir) {
+	int err;
+	// Open ZIP file
+	zip_t* za = zip_open(zipPath.c_str(), 0, &err);
+	if (!za) {
+		WARN("Could not open ZIP file %s: error %d", zipPath.c_str(), err);
+		return err;
+	}
+	DEFER({
+		zip_close(za);
+	});
+
+	// Iterate ZIP entries
+	for (int i = 0; i < zip_get_num_entries(za, 0); i++) {
+		zip_stat_t zs;
+		err = zip_stat_index(za, i, 0, &zs);
+		if (err) {
+			WARN("zip_stat_index() failed: error %d", err);
+			return err;
+		}
+
+		std::string path = dir + "/" + zs.name;
+
+		if (path[path.size() - 1] == '/') {
+			// Create directory
+			system::createDirectory(path);
+			// HACK
+			// Create and delete file to update the directory's mtime.
+			std::string tmpPath = path + "/.tmp";
+			FILE* tmpFile = fopen(tmpPath.c_str(), "w");
+			fclose(tmpFile);
+			std::remove(tmpPath.c_str());
+		}
+		else {
+			// Open ZIP entry
+			zip_file_t* zf = zip_fopen_index(za, i, 0);
+			if (!zf) {
+				WARN("zip_fopen_index() failed");
+				return -1;
+			}
+			DEFER({
+				zip_fclose(zf);
+			});
+
+			// Create file
+			FILE* outFile = fopen(path.c_str(), "wb");
+			if (!outFile) {
+				WARN("Could not create file %s", path.c_str());
+				return -1;
+			}
+			DEFER({
+				fclose(outFile);
+			});
+
+			// Read buffer and copy to file
+			while (true) {
+				char buffer[1 << 15];
+				int len = zip_fread(zf, buffer, sizeof(buffer));
+				if (len <= 0)
+					break;
+				fwrite(buffer, 1, len, outFile);
+			}
+		}
+	}
+	return 0;
 }
 
 

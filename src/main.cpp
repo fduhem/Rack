@@ -17,6 +17,7 @@
 #include <system.hpp>
 #include <string.hpp>
 #include <updater.hpp>
+#include <network.hpp>
 
 #include <osdialog.h>
 #include <thread>
@@ -76,14 +77,12 @@ int main(int argc, char* argv[]) {
 			case 'h': {
 				settings::headless = true;
 			} break;
-#if !defined ARCH_MAC
 			// Due to Mac app translocation and Apple adding a -psn... flag when launched, disable screenshots on Mac for now.
-			case 'p': {
+			case 't': {
 				screenshot = true;
 				// If parsing number failed, use default value
-				sscanf(optarg, "%f", &screenshotZoom);
+				std::sscanf(optarg, "%f", &screenshotZoom);
 			} break;
-#endif
 			case 's': {
 				asset::systemDir = optarg;
 			} break;
@@ -97,6 +96,7 @@ int main(int argc, char* argv[]) {
 		patchPath = argv[optind];
 	}
 
+	// Initialize environment
 	asset::init();
 	logger::init();
 
@@ -145,6 +145,7 @@ int main(int argc, char* argv[]) {
 
 	INFO("Initializing environment");
 	random::init();
+	network::init();
 	midi::init();
 	rtmidiInit();
 	bridgeInit();
