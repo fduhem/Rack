@@ -157,9 +157,6 @@ struct ModelBox : widget::OpaqueWidget {
 			box.size.x = 10 * RACK_GRID_WIDTH * settings::moduleBrowserZoom;
 			box.size.y = RACK_GRID_HEIGHT * settings::moduleBrowserZoom;
 			box.size = box.size.ceil();
-
-			if (previewFb)
-				deletePreview();
 		}
 	}
 
@@ -195,14 +192,6 @@ struct ModelBox : widget::OpaqueWidget {
 		box.size.x = previewWidget->box.size.x;
 	}
 
-	void deletePreview() {
-		assert(previewFb);
-		previewWidget->removeChild(previewFb);
-		delete previewFb;
-		previewFb = NULL;
-	}
-
-
 	void step() override {
 
 
@@ -210,7 +199,6 @@ struct ModelBox : widget::OpaqueWidget {
 
 		OpaqueWidget::step();
 	}
-
 
 	void draw(const DrawArgs& args) override {
 		// Lazily create preview when drawn
